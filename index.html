@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Канбан — Порталбюро</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <h1>Канбан проектов</h1>
+      <div class="topbar-actions">
+        <button class="add-button" id="undo-button" title="Отменить последнее действие">Вернуть</button>
+        <button class="add-button" id="add-project-button">Создать проект</button>
+      </div>
+    </header>
+
+    <section class="toolbar">
+      <div class="project-list" id="project-list"></div>
+      <div class="toolbar-group">
+        <label class="toolbar-label" for="project-search">Поиск проекта</label>
+        <input type="search" id="project-search" placeholder="Например: Зина" />
+      </div>
+      <div class="project-filter">
+        <label for="project-filter">Фильтр по проекту</label>
+        <select id="project-filter"></select>
+      </div>
+      <div class="assignee-stats" id="assignee-stats"></div>
+    </section>
+
+    <section class="new-card-panel is-hidden" id="new-project-panel">
+      <form class="new-card-form" id="new-project-form">
+        <label class="form-field">
+          <span>Название проекта</span>
+          <input type="text" id="new-project-name" required />
+        </label>
+        <div class="form-actions">
+          <button class="save-button" type="submit">Создать</button>
+          <button class="cancel-button" type="button" id="new-project-cancel">Отмена</button>
+        </div>
+      </form>
+    </section>
+
+    <main class="board" id="board"></main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
