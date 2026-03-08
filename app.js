@@ -808,7 +808,7 @@ const init = async () => {
 init().then(setupRealtime);
 
 setInterval(() => {
-  if (boardDirty && !syncInProgress) {
+  if (boardDirty && !syncInProgress && !isEditing()) {
     syncBoard();
   }
 }, 5000);
@@ -819,7 +819,6 @@ const scheduleSave = () => {
   saveTimeout = setTimeout(() => {
     markDirty();
     saveBoardWithHistory();
-    syncBoard();
   }, 300);
 };
 
@@ -874,6 +873,17 @@ document.addEventListener(
     applyFilter();
     updateAssigneeStats();
     markDirty();
+    syncBoard();
+  },
+  true
+);
+
+document.addEventListener(
+  'blur',
+  (event) => {
+    if (!event.target.classList.contains('card-task')) return;
+    markDirty();
+    saveBoardWithHistory();
     syncBoard();
   },
   true
