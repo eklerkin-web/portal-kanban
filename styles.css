@@ -43,6 +43,58 @@ body {
 .topbar-actions {
   display: flex;
   gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.sync-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #eef0f2;
+  color: #5f6368;
+  font-size: 12px;
+  letter-spacing: 0.2px;
+}
+
+.sync-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #b0b6bd;
+  display: inline-block;
+}
+
+.sync-status.is-syncing .sync-dot {
+  background: #f4c430;
+  animation: syncPulse 1.2s infinite;
+}
+
+.sync-status.is-ok .sync-dot {
+  background: #66bb6a;
+}
+
+.sync-status.is-error .sync-dot {
+  background: #e57373;
+}
+
+.sync-time {
+  color: #8a8f98;
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes syncPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(244, 196, 48, 0.45);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(244, 196, 48, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(244, 196, 48, 0);
+  }
 }
 
 .add-button {
@@ -435,6 +487,9 @@ body {
   .topbar {
     flex-direction: column;
     align-items: flex-start;
+  }
+  .sync-status {
+    width: 100%;
   }
 }
 

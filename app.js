@@ -4,9 +4,18 @@ const HISTORY_KEY = 'portal-kanban-simple-history';
 const SUPABASE_URL = 'https://elkfckeosvthamsguhaz.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_LQurPTAlhxOtE30zXac65g_ojKmI7Nw';
 
+const realtimeClient =
+  typeof window !== 'undefined' && window.supabase
+    ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
+    : null;
+
+let realtimeChannel = null;
+let remoteRefreshTimer;
+
 const board = document.getElementById('board');
 const addProjectButton = document.getElementById('add-project-button');
 const undoButton = document.getElementById('undo-button');
+const importButton = document.getElementById('import-button');
 const newProjectPanel = document.getElementById('new-project-panel');
 const newProjectForm = document.getElementById('new-project-form');
 const newProjectCancel = document.getElementById('new-project-cancel');
@@ -15,6 +24,9 @@ const projectList = document.getElementById('project-list');
 const projectFilter = document.getElementById('project-filter');
 const assigneeStats = document.getElementById('assignee-stats');
 const projectSearch = document.getElementById('project-search');
+const syncStatus = document.getElementById('sync-status');
+const syncText = document.getElementById('sync-text');
+const syncTime = document.getElementById('sync-time');
 
 const assigneeClassMap = {
   Валерия: 'assignee-valeriya',
@@ -34,6 +46,63 @@ const columnDefinitions = [
   { id: 'col-client', title: 'Жду клиента' },
   { id: 'col-final', title: 'Финал' },
 ];
+
+const initialData = {
+  columns: {
+    'col-team': [
+      {
+        project: 'Алла и Радион',
+        task: 'Аня вносит дополнения из интервью с Инной и готовит доки изменений.',
+        assignee: 'Аня',
+      },
+      {
+        project: 'Сивковы',
+        task: 'Первый драфт текста + вопросы для второго интервью.',
+        assignee: 'Аня',
+      },
+      {
+        project: 'Путь Камино Гриши',
+        task: 'Переделка дизайна.',
+        assignee: 'Лиза',
+      },
+    ],
+    'col-me': [
+      {
+        project: 'Пискуновы (книга года)',
+        task: 'Договориться об интервью.',
+        assignee: 'Валерия',
+      },
+      {
+        project: 'Яша — 1 год',
+        task: 'Написать / собрать текст.',
+        assignee: 'Валерия',
+      },
+      {
+        project: 'Зина и Борис',
+        task: 'Обработать фотосессию и прислать в проект.',
+        assignee: 'Валерия',
+      },
+    ],
+    'col-client': [
+      {
+        project: 'Зина и Борис',
+        task: 'Ждём согласование дизайна. Параллельно — редактирование всей съёмки семьи.',
+        assignee: 'Валерия',
+      },
+    ],
+    'col-final': [],
+  },
+  projects: [
+    'Алла и Радион',
+    'Сивковы',
+    'Путь Камино Гриши',
+    'Пискуновы (книга года)',
+    'Яша — 1 год',
+    'Зина и Борис',
+  ],
+  filter: 'all',
+  search: '',
+};
 
 let projects = [];
 let currentFilter = 'all';
@@ -92,6 +161,83 @@ const insertProject = async (name) =>
     headers: { Prefer: 'return=representation' },
     body: JSON.stringify({ name }),
   });
+
+const buildTaskKey = (task) =>
+  `${task.project}||${task.task}||${task.assignee}||${task.column_id}`;
+
+const formatTime = (date) =>
+  date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+const setSyncState = (state, message, time) => {
+  if (!syncStatus) return;
+  syncStatus.classList.remove('is-syncing', 'is-ok', 'is-error');
+  if (state) {
+    syncStatus.classList.add(`is-${state}`);
+  }
+  if (syncText && message) {
+    syncText.textContent = message;
+  }
+  if (syncTime) {
+    syncTime.textContent = time ? `• ${formatTime(time)}` : '';
+  }
+};
+
+const isEditing = () => {
+  const active = document.activeElement;
+  if (!active) return false;
+  if (active.isContentEditable) return true;
+  if (active.closest('.quick-input')) return true;
+  if (active.matches('input, textarea, select')) return true;
+  return false;
+};
+
+const refreshFromRemote = async () => {
+  if (syncInProgress) return;
+  if (isEditing()) {
+    scheduleRemoteRefresh();
+    return;
+  }
+
+  try {
+    const remoteSnapshot = await hydrateFromRemote();
+    if (remoteSnapshot.taskCount === 0) return;
+    projects = remoteSnapshot.projects || [];
+    renderProjects();
+    renderBoard(remoteSnapshot);
+    applyFilter();
+    updateAssigneeStats();
+    saveLocalSnapshot(remoteSnapshot);
+    setSyncState('ok', 'Обновлено', new Date());
+  } catch (error) {
+    console.warn('Не удалось обновить доску из Supabase', error.message);
+    setSyncState('error', 'Ошибка синхронизации', new Date());
+  }
+};
+
+const scheduleRemoteRefresh = () => {
+  clearTimeout(remoteRefreshTimer);
+  remoteRefreshTimer = setTimeout(() => {
+    refreshFromRemote();
+  }, 500);
+};
+
+const setupRealtime = () => {
+  if (!realtimeClient || realtimeChannel) return;
+  realtimeChannel = realtimeClient
+    .channel('kanban-updates')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => {
+      scheduleRemoteRefresh();
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' }, () => {
+      scheduleRemoteRefresh();
+    })
+    .subscribe();
+
+  // Fallback: periodic refresh if realtime drops.
+  setInterval(() => {
+    refreshFromRemote();
+  }, 20000);
+};
 
 const saveHistory = (snapshot) => {
   const history = loadHistory();
@@ -388,12 +534,91 @@ const hydrateFromRemote = async () => {
     projects,
     filter: currentFilter,
     search: currentSearch,
+    taskCount: tasks.length,
   };
+};
+
+const importToSupabase = async () => {
+  if (!confirm('Импортировать задачи? Новые будут добавлены, существующие не удаляются.')) {
+    return;
+  }
+
+  saveBoardWithHistory();
+  const snapshot = getSnapshot();
+  setSyncState('syncing', 'Синхронизация...', new Date());
+
+  try {
+    const [remoteTasks, remoteProjects] = await Promise.all([fetchTasks(), fetchProjects()]);
+    const remoteTaskKeys = new Set(remoteTasks.map((task) => buildTaskKey(task)));
+    const remoteProjectNames = new Set(remoteProjects.map((row) => row.name));
+
+    const missingProjects = snapshot.projects.filter(
+      (name) => name && !remoteProjectNames.has(name)
+    );
+
+    if (missingProjects.length) {
+      await supabaseFetch('/rest/v1/projects', {
+        method: 'POST',
+        headers: { Prefer: 'return=representation' },
+        body: JSON.stringify(missingProjects.map((name) => ({ name }))),
+      });
+    }
+
+    const updates = [];
+    const inserts = [];
+
+    Object.keys(snapshot.columns).forEach((columnId) => {
+      snapshot.columns[columnId].forEach((card, index) => {
+        const payload = {
+          project: card.project,
+          task: card.task,
+          assignee: card.assignee,
+          column_id: columnId,
+          sort_index: index,
+          updated_at: new Date().toISOString(),
+        };
+
+        if (card.id) {
+          updates.push({ id: card.id, payload });
+        } else {
+          const key = buildTaskKey(payload);
+          if (!remoteTaskKeys.has(key)) {
+            inserts.push(payload);
+            remoteTaskKeys.add(key);
+          }
+        }
+      });
+    });
+
+    await Promise.all(updates.map((item) => updateTask(item.id, item.payload)));
+
+    if (inserts.length) {
+      await supabaseFetch('/rest/v1/tasks', {
+        method: 'POST',
+        headers: { Prefer: 'return=representation' },
+        body: JSON.stringify(inserts),
+      });
+    }
+
+    const remoteSnapshot = await hydrateFromRemote();
+    projects = remoteSnapshot.projects || [];
+    renderProjects();
+    renderBoard(remoteSnapshot);
+    applyFilter();
+    updateAssigneeStats();
+    saveLocalSnapshot(remoteSnapshot);
+    setSyncState('ok', 'Синхронизировано', new Date());
+  } catch (error) {
+    alert('Не удалось импортировать задачи. Проверьте доступ к Supabase.');
+    console.warn(error);
+    setSyncState('error', 'Ошибка синхронизации', new Date());
+  }
 };
 
 const syncBoard = async () => {
   if (syncInProgress) return;
   syncInProgress = true;
+  setSyncState('syncing', 'Синхронизация...', new Date());
   const snapshot = getSnapshot();
 
   try {
@@ -435,8 +660,10 @@ const syncBoard = async () => {
     knownTaskIds = currentIds;
 
     saveLocalSnapshot(snapshot);
+    setSyncState('ok', 'Синхронизировано', new Date());
   } catch (error) {
     console.warn('Ошибка синхронизации:', error.message);
+    setSyncState('error', 'Ошибка синхронизации', new Date());
   } finally {
     syncInProgress = false;
   }
@@ -464,10 +691,17 @@ const restoreFromSnapshot = (snapshot) => {
   syncBoard();
 };
 
+const countSnapshotTasks = (snapshot) => {
+  if (!snapshot?.columns) return 0;
+  return Object.values(snapshot.columns).reduce((sum, items) => sum + items.length, 0);
+};
+
 addProjectButton.addEventListener('click', () => {
   newProjectPanel.classList.toggle('is-hidden');
   newProjectName.focus();
 });
+
+importButton.addEventListener('click', importToSupabase);
 
 undoButton.addEventListener('click', () => {
   const history = loadHistory();
@@ -523,12 +757,33 @@ const init = async () => {
 
   try {
     const remoteSnapshot = await hydrateFromRemote();
-    projects = remoteSnapshot.projects || [];
+    if (remoteSnapshot.taskCount > 0) {
+      projects = remoteSnapshot.projects || [];
+      renderProjects();
+      renderBoard(remoteSnapshot);
+      applyFilter();
+      updateAssigneeStats();
+      saveLocalSnapshot(remoteSnapshot);
+      setSyncState('ok', 'Синхронизировано', new Date());
+      return;
+    }
+
+    if (localSnapshot && countSnapshotTasks(localSnapshot) > 0) {
+      projects = localSnapshot.projects || [];
+      renderProjects();
+      renderBoard(localSnapshot);
+      applyFilter();
+      updateAssigneeStats();
+      return;
+    }
+
+    projects = initialData.projects || [];
     renderProjects();
-    renderBoard(remoteSnapshot);
+    renderBoard(initialData);
     applyFilter();
     updateAssigneeStats();
-    saveLocalSnapshot(remoteSnapshot);
+    saveLocalSnapshot(initialData);
+    setSyncState('ok', 'Синхронизировано', new Date());
   } catch (error) {
     console.warn('Не удалось загрузить данные из Supabase', error.message);
     if (localSnapshot) {
@@ -537,11 +792,12 @@ const init = async () => {
       renderBoard(localSnapshot);
       applyFilter();
       updateAssigneeStats();
+      setSyncState('error', 'Автономный режим', new Date());
     }
   }
 };
 
-init();
+init().then(setupRealtime);
 
 let saveTimeout;
 const scheduleSave = () => {

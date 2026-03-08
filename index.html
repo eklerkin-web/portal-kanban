@@ -6,11 +6,18 @@
     <title>Канбан — Порталбюро</title>
     <link rel="stylesheet" href="styles.css" />
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   </head>
   <body>
     <header class="topbar">
       <h1>Канбан проектов</h1>
       <div class="topbar-actions">
+        <div class="sync-status" id="sync-status">
+          <span class="sync-dot" id="sync-dot"></span>
+          <span class="sync-text" id="sync-text">Синхронизация: ожидание</span>
+          <span class="sync-time" id="sync-time"></span>
+        </div>
+        <button class="add-button" id="import-button">Импортировать задачи</button>
         <button class="add-button" id="undo-button" title="Отменить последнее действие">Вернуть</button>
         <button class="add-button" id="add-project-button">Создать проект</button>
       </div>
