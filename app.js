@@ -109,6 +109,7 @@ let currentFilter = 'all';
 let currentSearch = '';
 let knownTaskIds = new Set();
 let syncInProgress = false;
+let boardDirty = false;
 
 const normalizeName = (value) => value.trim();
 
@@ -180,6 +181,10 @@ const setSyncState = (state, message, time) => {
   if (syncTime) {
     syncTime.textContent = time ? `• ${formatTime(time)}` : '';
   }
+};
+
+const markDirty = () => {
+  boardDirty = true;
 };
 
 const isEditing = () => {
@@ -412,6 +417,7 @@ const createQuickInput = (columnId) => {
       select.focus();
       return;
     }
+    markDirty();
     saveBoardWithHistory();
 
     const card = createCardElement({ project, task, assignee: 'Валерия' });
@@ -495,6 +501,7 @@ const renderBoard = (data) => {
       handle: '.card-handle',
       onStart: () => saveBoardWithHistory(),
       onEnd: () => {
+        markDirty();
         updateAssigneeStats();
         syncBoard();
       },
@@ -660,6 +667,7 @@ const syncBoard = async () => {
     knownTaskIds = currentIds;
 
     saveLocalSnapshot(snapshot);
+    boardDirty = false;
     setSyncState('ok', 'Синхронизировано', new Date());
   } catch (error) {
     console.warn('Ошибка синхронизации:', error.message);
@@ -799,10 +807,17 @@ const init = async () => {
 
 init().then(setupRealtime);
 
+setInterval(() => {
+  if (boardDirty && !syncInProgress) {
+    syncBoard();
+  }
+}, 5000);
+
 let saveTimeout;
 const scheduleSave = () => {
   clearTimeout(saveTimeout);
   saveTimeout = setTimeout(() => {
+    markDirty();
     saveBoardWithHistory();
     syncBoard();
   }, 300);
@@ -810,6 +825,7 @@ const scheduleSave = () => {
 
 document.addEventListener('input', (event) => {
   if (event.target.matches('[contenteditable="true"]')) {
+    markDirty();
     scheduleSave();
   }
 });
@@ -818,6 +834,7 @@ document.addEventListener('change', (event) => {
   if (event.target.classList.contains('assignee-select')) {
     const card = event.target.closest('.card');
     if (!card) return;
+    markDirty();
     applyAssigneeClass(card, event.target.value);
     updateAssigneeStats();
     saveBoardWithHistory();
@@ -830,6 +847,7 @@ document.addEventListener('click', (event) => {
   if (!archiveButton) return;
   const card = archiveButton.closest('.card');
   if (!card) return;
+  markDirty();
   saveBoardWithHistory();
   card.remove();
   applyFilter();
@@ -855,6 +873,7 @@ document.addEventListener(
     }
     applyFilter();
     updateAssigneeStats();
+    markDirty();
     syncBoard();
   },
   true
