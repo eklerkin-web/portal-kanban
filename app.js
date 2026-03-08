@@ -889,18 +889,23 @@ document.addEventListener(
   true
 );
 
-document.addEventListener('keydown', (event) => {
-  const editable = event.target.closest('.card-task, .card-project');
-  if (!editable) return;
-  if (event.key === 'Enter' && !event.shiftKey) {
-    event.preventDefault();
-    editable.blur();
-    setTimeout(() => {
-      markDirty();
-      saveBoardWithHistory();
-      syncBoard();
-    }, 0);
-  }
-});
+document.addEventListener(
+  'keydown',
+  (event) => {
+    const target = event.target?.nodeType === 3 ? event.target.parentElement : event.target;
+    const editable = target?.closest?.('.card-task, .card-project');
+    if (!editable) return;
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      editable.blur();
+      setTimeout(() => {
+        markDirty();
+        saveBoardWithHistory();
+        syncBoard();
+      }, 0);
+    }
+  },
+  true
+);
 
 window.createTask = createTask;
